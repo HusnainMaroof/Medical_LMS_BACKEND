@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    // =========================
+    // BUILD STRUCTURE
+    // =========================
+    "rootDir": "./src",
+    "outDir": "./dist",
+  "typeRoots": ["./node_modules/@types", "./src/types"],
+    // =========================
+    // MODULE SYSTEM (IMPORTANT)
+    // =========================
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2020",
+
+    // =========================
+    // NODE SUPPORT
+    // =========================
+    "types": ["node"],
+    "lib": ["ES2020"],
+
+    // =========================
+    // OUTPUT OPTIONS
+    // =========================
+    "sourceMap": true,
+    "declaration": false,
+
+    // =========================
+    // TYPE SAFETY (KEEP THESE)
+    // =========================
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+
+    // =========================
+    // IMPORTANT FOR BACKEND
+    // =========================
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true
+  },
+
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

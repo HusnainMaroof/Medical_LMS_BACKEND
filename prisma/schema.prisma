@@ -1,0 +1,153 @@
+
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum PaymentStatus {
+  paid
+  unpaid
+}
+
+enum ContentType {
+  video
+  pdf
+  document
+  link
+}
+
+model Professor {
+  id        String     @id @default(cuid())
+  fullName  String
+  email     String     @unique
+  password  String
+  status    UserStatus @default(active)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  batches  Batch[]
+  students Student[]
+
+  @@map("professors")
+}
+
+model Student {
+  id          String     @id @default(cuid())
+  fullName    String
+  email       String     @unique
+  password    String
+  studentCode String     @unique
+  status      UserStatus @default(active)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  professorId String
+  professor   Professor    @relation(fields: [professorId], references: [id])
+  enrollments Enrollment[]
+
+  @@map("students")
+}
+
+model Batch {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  professorId String
+  professor   Professor    @relation(fields: [professorId], references: [id])
+  subjects    Subject[]
+  enrollments Enrollment[]
+
+  @@map("batches")
+}
+
+model Subject {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  batchId String
+  batch   Batch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  topics  Topic[]
+
+  @@map("subjects")
+}
+
+model Topic {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subjectId String
+  subject   Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lectures  Lecture[]
+
+  @@map("topics")
+}
+
+model Lecture {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  order       Int      @default(0)
+  isFree      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  topicId  String
+  topic    Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  contents LectureContent[]
+
+  @@map("lectures")
+}
+
+model LectureContent {
+  id        String      @id @default(cuid())
+  type      ContentType
+  url       String
+  label     String?
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+
+  lectureId String
+  lecture   Lecture @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@map("lecture_contents")
+}
+
+model Enrollment {
+  id            String        @id @default(cuid())
+  paymentStatus PaymentStatus @default(unpaid)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+
+  batchId String
+  batch   Batch   @relation(fields: [batchId], references: [id])
+
+  @@unique([studentId, batchId])
+
+  @@map("enrollments")
+}
