@@ -18,6 +18,8 @@ type RedisConfig = {
 
 type SecretConfig = {
   SESSION_SECRET?: string;
+  ACCESS_TOKEN_SECRET?: string;
+  REFRESH_TOKEN_SECRET?: string;
 };
 
 type ORIGINS = {
@@ -47,6 +49,8 @@ export const envConfig = {
 
   SECRET: {
     SESSION_SECRET: process.env.SESSION_SECRET,
+    ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET,
+    REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET,
   } satisfies SecretConfig,
 
   ORIGINS: {
@@ -55,10 +59,9 @@ export const envConfig = {
   } satisfies ORIGINS,
 };
 
-
 const requiredEnvVars = [
   "DATABASE_URL",
-  "FRONTEND_ORIGIN", 
+  "FRONTEND_ORIGIN",
   "BACKEND_ORIGIN",
   "SESSION_SECRET",
 ];

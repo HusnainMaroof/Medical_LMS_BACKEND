@@ -1,53 +1,59 @@
+// ─────────────────────────────────────────────────────────────
+// INPUT TYPES
+// ─────────────────────────────────────────────────────────────
+
 export type UserRole = "professor" | "student";
 
-export type LoginInput = {
+export interface LoginInput {
   email: string;
   password: string;
   role: UserRole;
-};
+}
 
-export type ForgotPasswordInput = {
+export interface ForgotPasswordInput {
   email: string;
   role: UserRole;
-};
+}
 
-export type ResetPasswordInput = {
+export interface ResetPasswordInput {
   token: string;
   newPassword: string;
-};
+}
 
-// ======================================================
-// SESSION PAYLOADS
-// Discriminated union — TypeScript forces role narrowing
-// before accessing student-only fields.
-// ======================================================
+// ─────────────────────────────────────────────────────────────
+// INTERNAL SERVICE SHAPE
+// Returned by loginService, used to build tokens + response body.
+// ─────────────────────────────────────────────────────────────
 
-export type ProfessorSessionPayload = {
-  userId: string;
-  email: string;
-  role: "professor";
-  fullName: string;
-};
-
-export type StudentSessionPayload = {
-  userId: string;
-  email: string;
-  role: "student";
-  fullName: string;
-  studentCode: string;
-  batchId?: string;
-  paymentStatus?: "paid" | "unpaid";
-};
-
-export type SessionPayload = ProfessorSessionPayload | StudentSessionPayload;
-
-// ======================================================
-// RESET TOKEN — stored in Redis, role embedded here.
-// Never trust role from client on /reset-password.
-// ======================================================
-
-export type ResetTokenPayload = {
+export interface SessionPayload {
   userId: string;
   email: string;
   role: UserRole;
-};
+  fullName: string;
+  // Student-only
+  studentCode?: string;
+  batchId?: string;
+  paymentStatus?: "paid" | "unpaid";
+}
+
+// ─────────────────────────────────────────────────────────────
+// REDIS SHAPES
+// ─────────────────────────────────────────────────────────────
+
+export interface ResetTokenPayload {
+  userId: string;
+  email: string;
+  role: UserRole;
+}
+
+// ─────────────────────────────────────────────────────────────
+// LOGIN SERVICE RETURN
+// ─────────────────────────────────────────────────────────────
+
+export interface LoginResult {
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
+  user: SessionPayload;
+}

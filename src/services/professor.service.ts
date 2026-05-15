@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { prisma } from "../config/prisma.js";
 import { sendStudentCredentialsEmail } from "../utils/email.util.js";
+import { invalidateUserProfile } from "../lib/auth.redis.js";
 import {
   CACHE_KEYS,
   TTL,
@@ -29,6 +30,7 @@ import type {
   UpdateSubjectInput,
   UpdateTopicInput,
 } from "../type/professor.type.js";
+import { generateStudentCode } from "../utils/helper.js";
 
 // ============================================================
 // ─── DASHBOARD ──────────────────────────────────────────────
@@ -39,7 +41,6 @@ export const getDashboardService = async (professorId: string) => {
   const cached = await cacheGet(cacheKey);
   if (cached) return cached;
 
-  // All counts + recent data in parallel — single round-trip to DB
   const [
     totalStudents,
     totalBatches,
@@ -49,23 +50,14 @@ export const getDashboardService = async (professorId: string) => {
     recentEnrollments,
     batchOverview,
   ] = await Promise.all([
-    // Total students this professor created
     prisma.student.count({ where: { professorId } }),
-
-    // Total batches
     prisma.batch.count({ where: { professorId } }),
-
-    // Active batches
     prisma.batch.count({ where: { professorId, isActive: true } }),
-
-    // Enrollment breakdown — paid vs unpaid
     prisma.enrollment.groupBy({
       by: ["paymentStatus"],
       where: { batch: { professorId } },
       _count: { _all: true },
     }),
-
-    // 5 most recent students
     prisma.student.findMany({
       where: { professorId },
       orderBy: { createdAt: "desc" },
@@ -85,8 +77,6 @@ export const getDashboardService = async (professorId: string) => {
         },
       },
     }),
-
-    // 5 most recent enrollment changes
     prisma.enrollment.findMany({
       where: { batch: { professorId } },
       orderBy: { updatedAt: "desc" },
@@ -107,8 +97,6 @@ export const getDashboardService = async (professorId: string) => {
         batch: { select: { id: true, name: true } },
       },
     }),
-
-    // All batches with subject + enrollment counts (for overview table)
     prisma.batch.findMany({
       where: { professorId },
       orderBy: { createdAt: "desc" },
@@ -121,7 +109,6 @@ export const getDashboardService = async (professorId: string) => {
     }),
   ]);
 
-  // Reduce groupBy result into paid / unpaid counts
   const paidEnrollments =
     enrollmentStats.find((e) => e.paymentStatus === "paid")?._count._all ?? 0;
   const unpaidEnrollments =
@@ -157,10 +144,11 @@ export const createStudentService = async (
     fullName,
     email,
     password,
-    studentCode,
     batchId,
     paymentStatus = "unpaid",
   } = input;
+
+  let studentCode = await generateStudentCode();
 
   // 1. Verify batch belongs to this professor
   const batch = await prisma.batch.findFirst({
@@ -169,7 +157,7 @@ export const createStudentService = async (
   });
   if (!batch) throw new Error("Batch not found or access denied");
 
-  // 2. Check uniqueness before bcrypt (saves CPU on duplicate)
+  // 2. Uniqueness check before bcrypt (saves CPU on duplicate)
   const [emailTaken, codeTaken] = await Promise.all([
     prisma.student.findUnique({ where: { email }, select: { id: true } }),
     prisma.student.findUnique({ where: { studentCode }, select: { id: true } }),
@@ -207,7 +195,7 @@ export const createStudentService = async (
     return created;
   });
 
-  // 5. Send credentials email after transaction (plain password — only time it exists)
+  // 5. Send credentials email (plain password — only time it's available)
   await sendStudentCredentialsEmail(
     email,
     fullName,
@@ -286,7 +274,12 @@ export const updateStudentService = async (
     },
   });
 
-  await invalidateStudentCache(professorId);
+  // Bust student list + student's profile cache (email/name may have changed)
+  await Promise.all([
+    invalidateStudentCache(professorId),
+    invalidateUserProfile(studentId),
+  ]);
+
   return updated;
 };
 
@@ -301,7 +294,11 @@ export const deleteStudentService = async (
   if (!student) throw new Error("Student not found or access denied");
 
   await prisma.student.delete({ where: { id: studentId } });
-  await invalidateStudentCache(professorId);
+
+  await Promise.all([
+    invalidateStudentCache(professorId),
+    invalidateUserProfile(studentId),
+  ]);
 };
 
 // ============================================================
@@ -343,12 +340,14 @@ export const updateEnrollmentService = async (
   enrollmentId: string,
   input: UpdateEnrollmentInput,
 ) => {
+  // 1. Verify ownership — enrollment must belong to this professor's batch
   const enrollment = await prisma.enrollment.findFirst({
     where: { id: enrollmentId, batch: { professorId } },
-    select: { id: true },
+    select: { id: true, studentId: true },
   });
   if (!enrollment) throw new Error("Enrollment not found or access denied");
 
+  // 2. Update payment status in DB
   const updated = await prisma.enrollment.update({
     where: { id: enrollmentId },
     data: { paymentStatus: input.paymentStatus },
@@ -363,8 +362,16 @@ export const updateEnrollmentService = async (
     },
   });
 
-  // Bust enrollment list + dashboard (paid/unpaid counts changed)
-  await invalidateEnrollmentCache(professorId);
+  // 3. Bust both professor caches AND student profile cache in parallel.
+  //    invalidateUserProfile forces the student's next token refresh to
+  //    hit the DB and rebuild with the new paymentStatus — so they gain
+  //    or lose content access within 15 minutes (next token rotation),
+  //    not after 5 minutes of stale profile cache.
+  await Promise.all([
+    invalidateEnrollmentCache(professorId),
+    invalidateUserProfile(enrollment.studentId),
+  ]);
+
   return updated;
 };
 
@@ -505,7 +512,6 @@ export const createSubjectService = async (
   });
   if (!batch) throw new Error("Batch not found or access denied");
 
-  // Auto-order: append after last subject in this batch
   let order = input.order;
   if (order === undefined) {
     const last = await prisma.subject.findFirst({
@@ -781,7 +787,7 @@ export const createLectureService = async (
 
   await invalidateLectureCache(topicId);
 
-  // Return full breadcrumb context so frontend doesn't need extra calls
+  // Full breadcrumb in response — frontend needs no extra calls
   return {
     ...lecture,
     context: {

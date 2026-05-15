@@ -10,7 +10,6 @@ export interface CreateStudentInput {
   fullName: string;
   email: string;
   password: string;
-  studentCode: string;
   batchId: string;
   paymentStatus?: "paid" | "unpaid";
 }

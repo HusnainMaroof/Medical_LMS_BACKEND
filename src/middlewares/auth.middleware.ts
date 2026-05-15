@@ -1,31 +1,53 @@
 import { Request, Response, NextFunction } from "express";
 import { UnauthorizedException } from "../utils/app.error.js";
+import { verifyAccessToken } from "../utils/jwt.utli.js";
 
-// ======================================================
+// ─────────────────────────────────────────────────────────────
 // protectRoute
-// Validates active session, populates req.user from session.
-// No DB hit — session is the source of truth.
-// ======================================================
+//
+// Reads Bearer token from Authorization header.
+// Verifies JWT signature + expiry — zero Redis, zero DB.
+// All user data comes from the token payload.
+//
+// Device ID validation is NOT done here — it lives in:
+//   loginService     (on login)
+//   refreshService   (on every token rotation)
+//
+// This keeps protectRoute fast — every API call goes through
+// it, so it must stay a pure CPU operation (no I/O).
+// ─────────────────────────────────────────────────────────────
+
 export const protectRoute = (
-  req: Request,
-  res: Response,
-  next: NextFunction
+  req:  Request,
+  _res: Response,
+  next: NextFunction,
 ): void => {
-  if (!req.session?.userId) {
-    throw new UnauthorizedException("No active session. Please log in.");
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new UnauthorizedException("No token provided. Please log in.");
   }
 
-  req.user = {
-    id: req.session.userId,
-    email: req.session.email!,
-    role: req.session.role!,
-    fullName: req.session.fullName!,
+  const token = authHeader.slice(7);
 
-    // Student-only — undefined for professor
-    studentCode: req.session.studentCode,
-    batchId: req.session.batchId,
-    paymentStatus: req.session.paymentStatus,
-  };
+  try {
+    const payload = verifyAccessToken(token);
 
-  next();
+    req.user = {
+      userId:        payload.userId,
+      id:            payload.userId, // alias for professor controller backward compat
+      email:         payload.email,
+      role:          payload.role,
+      fullName:      payload.fullName,
+      studentCode:   payload.studentCode,
+      batchId:       payload.batchId,
+      paymentStatus: payload.paymentStatus,
+    };
+
+    next();
+  } catch {
+    throw new UnauthorizedException(
+      "Session expired or invalid. Please log in again.",
+    );
+  }
 };

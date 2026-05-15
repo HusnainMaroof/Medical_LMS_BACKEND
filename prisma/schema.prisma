@@ -51,7 +51,8 @@ model Student {
   status      UserStatus @default(active)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-
+deviceId           String?   @unique  // mobile device UUID
+deviceRegisteredAt DateTime?  
   professorId String
   professor   Professor    @relation(fields: [professorId], references: [id])
   enrollments Enrollment[]

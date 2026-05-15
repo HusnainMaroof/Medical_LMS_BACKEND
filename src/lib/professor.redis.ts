@@ -5,7 +5,7 @@ import { redis } from "../config/redis.js";
 // ============================================================
 
 export const TTL = {
-  DASHBOARD: 60 * 2, //  2 min — stats change often
+  DASHBOARD: 60 * 5, //  5 min — stats change often
   STUDENT_LIST: 60 * 5, //  5 min
   BATCH_LIST: 60 * 5, //  5 min
   BATCH_DETAIL: 60 * 10, // 10 min — full tree
